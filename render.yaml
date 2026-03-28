@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ai-travel-planner
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: GEMINI_API_KEY
+        value: AIzaSyAV7aRQ-awSoRor2n1w_E_LV2c7vS2rnzw
+      - key: EMAIL_USER
+        value: 'smartripplanner@gmail.com
+      - key: EMAIL_PASS
+        value: sdyl jbjt ywzl cjng
+      - key: PORT
+        value: 3000
