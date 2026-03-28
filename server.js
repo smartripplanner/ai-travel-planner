@@ -1,13 +1,13 @@
 const express = require("express");
-const cors = require("cors");
-app.use(cors());
 const bodyParser = require("body-parser");
 const path = require("path");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
+const cors = require("cors"); // <-- 1. Import CORS here
 
 const app = express();
+app.use(cors()); // <-- 2. Use CORS right AFTER app is initialized
 app.use(express.static(path.join(__dirname, "public")));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
@@ -318,6 +318,6 @@ Consider the weather, culture, and activities. Return ONLY JSON:
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✈  TravelAI running on http://localhost:${PORT}`);
+    console.log(`✈  TravelAI running on http://ai-travel-planner-gmmc.onrender.com:${PORT}`);
     console.log(`   New endpoints: /chat, /currency, /nearby-places, /email-itinerary, /packing-list`);
 });
