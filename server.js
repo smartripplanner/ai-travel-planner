@@ -4,17 +4,21 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
 const cors = require("cors");
+const dns = require("dns");
+
+// 🔴 FIX FOR RENDER EMAIL BUG: Force Node.js to use IPv4 to prevent ENETUNREACH errors
+dns.setDefaultResultOrder('ipv4first');
 
 const app = express();
 
-// 1. Enable CORS for all routes (Crucial for Netlify to talk to Render)
+// 1. Enable CORS for all routes
 app.use(cors());
 
 // 2. Parse incoming requests
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 3. Health Check Route (This proves the server is running on Render)
+// 3. Health Check Route
 app.get("/", (req, res) => {
     res.send("✈️ TravelAI Backend is Live, Secure, and Running!");
 });
@@ -22,6 +26,7 @@ app.get("/", (req, res) => {
 // ═══════════════════════════════════════════════════════
 // ENVIRONMENT VARIABLES & CONFIGURATION
 // ═══════════════════════════════════════════════════════
+// Pulling securely from Render's Environment Variables (NO HARDCODED KEYS!)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MAPS_API_KEY = process.env.MAPS_API_KEY;
 const EMAIL_USER = process.env.EMAIL_USER;
@@ -188,7 +193,7 @@ Question: ${message}`;
 });
 
 // ═══════════════════════════════════════════════════════
-// 3. CURRENCY CONVERTER (Free API, no key needed)
+// 3. CURRENCY CONVERTER
 // ═══════════════════════════════════════════════════════
 app.get("/currency", async (req, res) => {
     try {
@@ -203,20 +208,18 @@ app.get("/currency", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 4. NEARBY PLACES via Google Places API
+// 4. NEARBY PLACES 
 // ═══════════════════════════════════════════════════════
 app.get("/nearby-places", async (req, res) => {
     const { destination } = req.query;
     if (!destination) return res.json({ places: [] });
-    if (!MAPS_API_KEY) return res.json({ places: [] }); // Fail gracefully if no map key
+    if (!MAPS_API_KEY) return res.json({ places: [] });
 
     try {
-        // Geocode destination first
         const geoRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${MAPS_API_KEY}`);
         const location = geoRes.data.results?.[0]?.geometry?.location;
         if (!location) return res.json({ places: [] });
 
-        // Nearby tourist attractions
         const placesRes = await axios.get(
             `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=15000&type=tourist_attraction&key=${MAPS_API_KEY}`
         );
@@ -244,7 +247,9 @@ app.post("/email-itinerary", async (req, res) => {
 
     try {
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com', // 🔴 Forced standard host instead of service shortcut
+            port: 465,
+            secure: true,
             auth: { user: EMAIL_USER, pass: EMAIL_PASS }
         });
 
@@ -307,7 +312,7 @@ app.get("/get-image", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 7. GENERATE SMART PACKING LIST 
+// 7. GENERATE SMART PACKING LIST
 // ═══════════════════════════════════════════════════════
 app.post("/packing-list", async (req, res) => {
     if (!genAI) return res.status(500).json({ error: "Gemini API key is not configured." });
