@@ -240,7 +240,7 @@ app.get("/nearby-places", async (req, res) => {
 // 5. EMAIL ITINERARY (Real SaaS API via Brevo)
 // ═══════════════════════════════════════════════════════
 app.post("/email-itinerary", async (req, res) => {
-    const { email, destination, days, itinerarySummary } = req.body;
+    const { email, destination, days, from, style, budget, travelDate, itinerary, totalCost } = req.body;
     
     if (!email || !destination) return res.status(400).json({ error: "Email and destination required." });
     
@@ -251,22 +251,163 @@ app.post("/email-itinerary", async (req, res) => {
         return res.status(500).json({ error: "Server email API is not configured." });
     }
 
+    // Format style label
+    const tripStyle = style ? style.charAt(0).toUpperCase() + style.slice(1) : 'Standard';
+    const estCost = totalCost || (budget ? '₹' + parseInt(budget).toLocaleString('en-IN') : '—');
+
+    // Build day cards HTML
+    const dayCardsHtml = (itinerary || []).map(day => `
+      <tr>
+        <td style="padding: 6px 32px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"
+            style="background-color:#1a2235; border:1px solid rgba(212,167,106,0.15); border-radius:12px; overflow:hidden; margin-bottom:4px;">
+            <!-- Day header -->
+            <tr>
+              <td style="padding:14px 20px; background:rgba(212,167,106,0.08); border-bottom:1px solid rgba(212,167,106,0.15);">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td>
+                      <span style="font-family:Georgia,'Times New Roman',serif; font-size:17px; color:#d4a76a; font-weight:600;">Day ${day.day}</span>
+                      ${day.theme ? `<span style="font-size:12px; color:rgba(212,167,106,0.65); margin-left:10px;">— ${day.theme}</span>` : ''}
+                    </td>
+                    <td align="right">
+                      <span style="font-size:13px; color:#d4a76a; font-weight:600;">${day.cost || ''}</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <!-- Places row -->
+            <tr>
+              <td style="padding:12px 20px 8px;">
+                <div style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(245,240,232,0.35); margin-bottom:8px;">📍 Places to Visit</div>
+                <div>${(day.places || []).map(p => `<span style="display:inline-block; background:rgba(212,167,106,0.1); border:1px solid rgba(212,167,106,0.22); color:#d4a76a; padding:3px 11px; border-radius:20px; font-size:12px; margin:2px 3px 2px 0;">${p}</span>`).join('')}</div>
+              </td>
+            </tr>
+            <!-- Food & Transport -->
+            <tr>
+              <td style="padding:8px 20px 14px;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td width="50%" valign="top" style="padding-right:8px;">
+                      <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:11px 13px;">
+                        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:rgba(245,240,232,0.38); margin-bottom:5px;">🍴 Food</div>
+                        <div style="font-size:13px; color:#f5f0e8; line-height:1.55;">${day.food || '—'}</div>
+                      </div>
+                    </td>
+                    <td width="50%" valign="top" style="padding-left:8px;">
+                      <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:11px 13px;">
+                        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:rgba(245,240,232,0.38); margin-bottom:5px;">🚕 Transport</div>
+                        <div style="font-size:13px; color:#f5f0e8; line-height:1.55;">${day.transport || '—'}</div>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+                ${day.note ? `<div style="margin-top:8px; background:rgba(212,167,106,0.06); border:1px solid rgba(212,167,106,0.15); border-radius:8px; padding:9px 13px; font-size:12px; color:rgba(245,240,232,0.7); line-height:1.5;">💡 <strong style="color:#d4a76a;">Pro Tip:</strong> ${day.note}</div>` : ''}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    `).join('');
+
+    // Full email HTML
+    const htmlContent = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Your TravelAI Itinerary</title>
+</head>
+<body style="margin:0; padding:0; background-color:#0d1117; font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0d1117;">
+    <tr>
+      <td align="center" style="padding:28px 12px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0"
+          style="max-width:600px; width:100%; background-color:#0a0f1a; border-radius:16px; overflow:hidden; border:1px solid rgba(212,167,106,0.15);">
+
+          <!-- ── HEADER ── -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0a0f1a 0%,#1a2235 100%); padding:36px 40px 28px; text-align:center; border-bottom:1px solid rgba(212,167,106,0.18);">
+              <div style="font-family:Georgia,'Times New Roman',serif; font-size:13px; letter-spacing:0.22em; text-transform:uppercase; color:#d4a76a; margin-bottom:14px;">✈ TravelAI</div>
+              <h1 style="font-family:Georgia,'Times New Roman',serif; color:#f5f0e8; font-size:30px; font-weight:300; margin:0 0 10px; line-height:1.2;">Your Trip to ${destination}</h1>
+              <p style="color:rgba(245,240,232,0.48); font-size:13px; margin:0;">${days} Days &nbsp;·&nbsp; ${from || 'Home'} → ${destination} &nbsp;·&nbsp; ${tripStyle} Style</p>
+            </td>
+          </tr>
+
+          <!-- ── SUMMARY STRIP ── -->
+          <tr>
+            <td style="background:#111827; padding:20px 32px; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" width="25%" style="padding:0 6px;">
+                    <div style="font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(245,240,232,0.36); margin-bottom:5px;">Duration</div>
+                    <div style="font-size:15px; font-weight:700; color:#d4a76a;">${days} Days</div>
+                  </td>
+                  <td align="center" width="25%" style="padding:0 6px; border-left:1px solid rgba(255,255,255,0.07);">
+                    <div style="font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(245,240,232,0.36); margin-bottom:5px;">From</div>
+                    <div style="font-size:15px; font-weight:700; color:#d4a76a;">${from || '—'}</div>
+                  </td>
+                  <td align="center" width="25%" style="padding:0 6px; border-left:1px solid rgba(255,255,255,0.07);">
+                    <div style="font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(245,240,232,0.36); margin-bottom:5px;">Style</div>
+                    <div style="font-size:15px; font-weight:700; color:#d4a76a;">${tripStyle}</div>
+                  </td>
+                  <td align="center" width="25%" style="padding:0 6px; border-left:1px solid rgba(255,255,255,0.07);">
+                    <div style="font-size:9px; text-transform:uppercase; letter-spacing:0.1em; color:rgba(245,240,232,0.36); margin-bottom:5px;">Est. Budget</div>
+                    <div style="font-size:15px; font-weight:700; color:#d4a76a;">${estCost}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ── ITINERARY HEADING ── -->
+          <tr>
+            <td style="padding:28px 32px 10px;">
+              <h2 style="font-family:Georgia,'Times New Roman',serif; font-size:20px; font-weight:400; color:#f5f0e8; margin:0 0 4px;">🗓 Day-by-Day Itinerary</h2>
+              <p style="font-size:11px; color:rgba(245,240,232,0.38); margin:0;">Curated by Gemini AI based on your preferences</p>
+            </td>
+          </tr>
+
+          <!-- ── DAY CARDS ── -->
+          ${dayCardsHtml}
+
+          <!-- ── DIVIDER ── -->
+          <tr><td style="padding:4px 0;"></td></tr>
+
+          <!-- ── CTA ── -->
+          <tr>
+            <td style="padding:28px 40px 24px; text-align:center; border-top:1px solid rgba(255,255,255,0.06);">
+              <p style="color:rgba(245,240,232,0.5); font-size:14px; margin:0 0 18px; line-height:1.6;">Want to explore more destinations or tweak this plan?</p>
+              <a href="https://amazing-travel-123.netlify.app/"
+                style="display:inline-block; background:linear-gradient(135deg,#d4a76a,#c8941a); color:#0a0f1a; text-decoration:none; padding:13px 30px; border-radius:50px; font-size:13px; font-weight:700; letter-spacing:0.06em;">✨ Plan Another Trip</a>
+            </td>
+          </tr>
+
+          <!-- ── FOOTER ── -->
+          <tr>
+            <td style="padding:18px 40px 22px; background:#050a12; text-align:center;">
+              <p style="color:rgba(245,240,232,0.22); font-size:11px; margin:0; line-height:1.7;">
+                Generated by <strong style="color:rgba(212,167,106,0.5);">TravelAI</strong> — Powered by Gemini AI<br>
+                Flight &amp; hotel prices are estimates only. Always verify before booking.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
     try {
         // Send email via Brevo REST API (Bypasses Render's SMTP Port Block)
         const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: { email: EMAIL_USER, name: "TravelAI Planner" },
             to: [{ email: email }],
             subject: `✈️ Your ${days}-Day ${destination} Itinerary — TravelAI`,
-            htmlContent: `
-                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #0a0f1a; color: #f5f0e8; padding: 32px; border-radius: 16px;">
-                    <h1 style="color: #d4a76a; font-size: 28px; margin-bottom: 8px;">✈️ Your Trip to ${destination}</h1>
-                    <p style="color: rgba(255,255,255,0.6); margin-bottom: 24px;">${days} Days | Generated by TravelAI</p>
-                    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
-                        <pre style="color: #f5f0e8; font-family: sans-serif; white-space: pre-wrap; font-size: 14px; line-height: 1.6;">${itinerarySummary}</pre>
-                    </div>
-                    <p style="margin-top: 24px; font-size: 12px; color: rgba(255,255,255,0.3);">Generated by TravelAI — Powered by Gemini AI. Always verify prices before booking.</p>
-                </div>
-            `
+            htmlContent
         }, {
             headers: {
                 'accept': 'application/json',
