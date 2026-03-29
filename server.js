@@ -1,23 +1,30 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const path = require("path");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
 const nodemailer = require("nodemailer");
-const cors = require("cors"); // <-- 1. Import CORS here
+const cors = require("cors");
 
 const app = express();
-app.use(cors()); // <-- 2. Use CORS right AFTER app is initialized
-app.use(express.static(path.join(__dirname, "public")));
+
+// 1. Enable CORS for all routes (Crucial for Netlify to talk to Render)
+app.use(cors());
+
+// 2. Parse incoming requests
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
+// 3. Health Check Route (Replaces the old public folder)
+app.get("/", (req, res) => {
+    res.send("✈️ TravelAI Backend is Live and Running!");
+});
+
 // --- SECRETS & KEYS ---
-const GEMINI_API_KEY = "AIzaSyAV7aRQ-awSoRor2n1w_E_LV2c7vS2rnzw";
-const MAPS_API_KEY = "AIzaSyDkD0iyaPkulI8IosMnbhKQgBQ3PO29JkQ";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyAV7aRQ-awSoRor2n1w_E_LV2c7vS2rnzw";
+const MAPS_API_KEY = process.env.MAPS_API_KEY || "AIzaSyDkD0iyaPkulI8IosMnbhKQgBQ3PO29JkQ";
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// --- EMAIL CONFIG (Update with real credentials) ---
+// --- EMAIL CONFIG ---
 const EMAIL_USER = process.env.EMAIL_USER || "smartripplanner@gmail.com";
 const EMAIL_PASS = process.env.EMAIL_PASS || "sdyl jbjt ywzl cjng";
 
@@ -36,12 +43,8 @@ const getIATACode = (city) => {
     return map[city.toLowerCase().trim()] || city.substring(0, 3).toUpperCase();
 };
 
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
 // ═══════════════════════════════════════════════════════
-// 1. GENERATE ITINERARY (ENHANCED — Phase 2)
+// 1. GENERATE ITINERARY
 // ═══════════════════════════════════════════════════════
 app.post("/generate", async (req, res) => {
     const { from, destination, budget, days, date, style, travelers, pace, interests } = req.body;
@@ -150,7 +153,7 @@ Return ONLY this JSON (no markdown, no extra text):
 });
 
 // ═══════════════════════════════════════════════════════
-// 2. AI CHATBOT ENDPOINT (Phase 4)
+// 2. AI CHATBOT ENDPOINT
 // ═══════════════════════════════════════════════════════
 app.post("/chat", async (req, res) => {
     const { message, destination, context } = req.body;
@@ -175,14 +178,13 @@ Question: ${message}`;
 });
 
 // ═══════════════════════════════════════════════════════
-// 3. CURRENCY CONVERTER (Free API, no key needed)
+// 3. CURRENCY CONVERTER
 // ═══════════════════════════════════════════════════════
 app.get("/currency", async (req, res) => {
     try {
         const response = await axios.get("https://api.exchangerate-api.com/v4/latest/INR");
         res.json({ rates: response.data.rates, base: "INR" });
     } catch (error) {
-        // Fallback rates
         res.json({
             base: "INR",
             rates: { USD: 0.012, EUR: 0.011, GBP: 0.0095, JPY: 1.78, AED: 0.044, SGD: 0.016, THB: 0.42, AUD: 0.018 }
@@ -191,19 +193,17 @@ app.get("/currency", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 4. NEARBY PLACES via Google Places API
+// 4. NEARBY PLACES 
 // ═══════════════════════════════════════════════════════
 app.get("/nearby-places", async (req, res) => {
     const { destination } = req.query;
     if (!destination) return res.json({ places: [] });
 
     try {
-        // Geocode destination first
         const geoRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${MAPS_API_KEY}`);
         const location = geoRes.data.results?.[0]?.geometry?.location;
         if (!location) return res.json({ places: [] });
 
-        // Nearby tourist attractions
         const placesRes = await axios.get(
             `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=15000&type=tourist_attraction&key=${MAPS_API_KEY}`
         );
@@ -221,7 +221,7 @@ app.get("/nearby-places", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 5. EMAIL ITINERARY (Phase 3)
+// 5. EMAIL ITINERARY
 // ═══════════════════════════════════════════════════════
 app.post("/email-itinerary", async (req, res) => {
     const { email, destination, days, itinerarySummary } = req.body;
@@ -258,7 +258,7 @@ app.post("/email-itinerary", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 6. IMAGE FETCHER (Original — unchanged)
+// 6. IMAGE FETCHER
 // ═══════════════════════════════════════════════════════
 app.get("/get-image", async (req, res) => {
     try {
@@ -292,7 +292,7 @@ app.get("/get-image", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 7. GENERATE SMART PACKING LIST (Phase 4)
+// 7. GENERATE SMART PACKING LIST
 // ═══════════════════════════════════════════════════════
 app.post("/packing-list", async (req, res) => {
     const { destination, days, style, date } = req.body;
@@ -318,6 +318,5 @@ Consider the weather, culture, and activities. Return ONLY JSON:
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✈  TravelAI running on http://ai-travel-planner-gmmc.onrender.com:${PORT}`);
-    console.log(`   New endpoints: /chat, /currency, /nearby-places, /email-itinerary, /packing-list`);
+    console.log(`✈  TravelAI running on Port ${PORT}`);
 });
