@@ -14,19 +14,25 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
 
-// 3. Health Check Route (Replaces the old public folder)
+// 3. Health Check Route (This proves the server is running on Render)
 app.get("/", (req, res) => {
-    res.send("✈️ TravelAI Backend is Live and Running!");
+    res.send("✈️ TravelAI Backend is Live, Secure, and Running!");
 });
 
-// --- SECRETS & KEYS ---
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyAV7aRQ-awSoRor2n1w_E_LV2c7vS2rnzw";
-const MAPS_API_KEY = process.env.MAPS_API_KEY || "AIzaSyDkD0iyaPkulI8IosMnbhKQgBQ3PO29JkQ";
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+// ═══════════════════════════════════════════════════════
+// ENVIRONMENT VARIABLES & CONFIGURATION
+// ═══════════════════════════════════════════════════════
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const MAPS_API_KEY = process.env.MAPS_API_KEY;
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
 
-// --- EMAIL CONFIG ---
-const EMAIL_USER = process.env.EMAIL_USER || "smartripplanner@gmail.com";
-const EMAIL_PASS = process.env.EMAIL_PASS || "sdyl jbjt ywzl cjng";
+// Startup check to ensure keys are loaded properly from Render Environment
+if (!GEMINI_API_KEY) console.error("⚠️ WARNING: GEMINI_API_KEY is missing from environment variables.");
+if (!MAPS_API_KEY) console.error("⚠️ WARNING: MAPS_API_KEY is missing from environment variables.");
+if (!EMAIL_USER || !EMAIL_PASS) console.error("⚠️ WARNING: EMAIL_USER or EMAIL_PASS is missing.");
+
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // --- IATA CODE MAPPER ---
 const getIATACode = (city) => {
@@ -44,9 +50,11 @@ const getIATACode = (city) => {
 };
 
 // ═══════════════════════════════════════════════════════
-// 1. GENERATE ITINERARY
+// 1. GENERATE ITINERARY 
 // ═══════════════════════════════════════════════════════
 app.post("/generate", async (req, res) => {
+    if (!genAI) return res.status(500).json({ error: "Gemini API key is not configured." });
+
     const { from, destination, budget, days, date, style, travelers, pace, interests } = req.body;
 
     const travelStyle = style === "luxury" ? "luxury 5-star" : style === "mid" ? "mid-range comfortable" : style === "adventure" ? "adventure-focused" : style === "relax" ? "relaxing & leisurely" : "budget-friendly";
@@ -156,6 +164,8 @@ Return ONLY this JSON (no markdown, no extra text):
 // 2. AI CHATBOT ENDPOINT
 // ═══════════════════════════════════════════════════════
 app.post("/chat", async (req, res) => {
+    if (!genAI) return res.status(500).json({ error: "Gemini API key is not configured." });
+    
     const { message, destination, context } = req.body;
     if (!message) return res.status(400).json({ error: "No message provided." });
 
@@ -178,7 +188,7 @@ Question: ${message}`;
 });
 
 // ═══════════════════════════════════════════════════════
-// 3. CURRENCY CONVERTER
+// 3. CURRENCY CONVERTER (Free API, no key needed)
 // ═══════════════════════════════════════════════════════
 app.get("/currency", async (req, res) => {
     try {
@@ -193,17 +203,20 @@ app.get("/currency", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 4. NEARBY PLACES 
+// 4. NEARBY PLACES via Google Places API
 // ═══════════════════════════════════════════════════════
 app.get("/nearby-places", async (req, res) => {
     const { destination } = req.query;
     if (!destination) return res.json({ places: [] });
+    if (!MAPS_API_KEY) return res.json({ places: [] }); // Fail gracefully if no map key
 
     try {
+        // Geocode destination first
         const geoRes = await axios.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(destination)}&key=${MAPS_API_KEY}`);
         const location = geoRes.data.results?.[0]?.geometry?.location;
         if (!location) return res.json({ places: [] });
 
+        // Nearby tourist attractions
         const placesRes = await axios.get(
             `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.lat},${location.lng}&radius=15000&type=tourist_attraction&key=${MAPS_API_KEY}`
         );
@@ -221,11 +234,13 @@ app.get("/nearby-places", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 5. EMAIL ITINERARY
+// 5. EMAIL ITINERARY 
 // ═══════════════════════════════════════════════════════
 app.post("/email-itinerary", async (req, res) => {
     const { email, destination, days, itinerarySummary } = req.body;
+    
     if (!email || !destination) return res.status(400).json({ error: "Email and destination required." });
+    if (!EMAIL_USER || !EMAIL_PASS) return res.status(500).json({ error: "Server email is not configured." });
 
     try {
         const transporter = nodemailer.createTransport({
@@ -292,9 +307,11 @@ app.get("/get-image", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// 7. GENERATE SMART PACKING LIST
+// 7. GENERATE SMART PACKING LIST 
 // ═══════════════════════════════════════════════════════
 app.post("/packing-list", async (req, res) => {
+    if (!genAI) return res.status(500).json({ error: "Gemini API key is not configured." });
+
     const { destination, days, style, date } = req.body;
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -316,7 +333,8 @@ Consider the weather, culture, and activities. Return ONLY JSON:
     }
 });
 
+// Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✈  TravelAI running on Port ${PORT}`);
+    console.log(`✈  TravelAI Backend running on Port ${PORT}`);
 });
