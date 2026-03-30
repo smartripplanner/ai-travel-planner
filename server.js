@@ -10,13 +10,7 @@ const dns = require("dns");
 dns.setDefaultResultOrder('ipv4first');
 
 const app = express();
-const compression = require("compression");
-app.use(compression());
 
-app.use((req, res, next) => {
-    res.setTimeout(120000);
-    next();
-});
 // 1. Enable CORS for all routes
 app.use(cors());
 
